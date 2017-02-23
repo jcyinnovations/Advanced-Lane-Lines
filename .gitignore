@@ -45,3 +45,19 @@ $RECYCLE.BIN/
 Network Trash Folder
 Temporary Items
 .apdisk
+
+# Ignore project data directories
+debug_detailed/
+debug_images*/
+examples/
+output_images/
+__pycache__/
+test_images/
+overlay_images/
+camera_cal/
+corrected_images/
+.ipynb_checkpoints/
+
+# Other project files to ignore
+*.mp4
+*.xcf
