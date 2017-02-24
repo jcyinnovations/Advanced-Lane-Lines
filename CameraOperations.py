@@ -106,10 +106,12 @@ def correct_distortion(img, mtx, dist):
 #################################################################
 #Perspective Transform: extract lanes and view from above
 #################################################################
-def perspective_transform(image, viewport=[[0,0],[0,0],[0,0],[0,0]], offset=100, reverse=False):
+def perspective_transform(image, viewport=[[0,0],[0,0],[0,0],[0,0]], offset=80, reverse=False):
     w, h = image.shape[1], image.shape[0]
     src = np.float32(viewport)
-    dst = np.float32([[offset, offset], [w-offset, offset], [w-offset, h-offset], [offset, h-offset]])
+    #dst = np.float32([[offset, offset], [w-offset, offset], [w-offset, h-offset], [offset, h-offset]])
+    #dst = np.float32([[offset,0],[w-offset,0],[w-offset,h+offset],[offset,h+offset]])
+    dst = np.float32([[offset,0],[w-offset,0],[w-offset,h],[offset,h]])
     M = cv2.getPerspectiveTransform(src, dst)
     if reverse:
         M = cv2.getPerspectiveTransform(dst, src)

@@ -138,13 +138,10 @@ def map_lane_lines(image, window_width=50, window_height=80, margin=100, cache=N
     sobel_kernel=15
     s_thresh=(170,240)
     w, h = image.shape[1], image.shape[0]
-    offset = 0
+    offset = 80
     
-    viewport = [[540,468],[740,468],[1280,720],[0,720]]                                    # New Viewport (vanishing point intersection)
-    #viewport = [[593,443],[687,443],[1280,720],[0,720]]                                    # Longer viewport to try mastering the challenge video
-    #viewport = [[450,510],[830,510],[1280,720],[0,720]]                                    # Shorter viewport to try mastering the challenge video
-    #viewport = [[round(w/2-105),round(h*.65)],[round(w/2+105),round(h*.65)],[w,h],[0,h]]   # Original Viewport (eyeballed)
-    #viewport = [[round(w/2-142),485],[round(w/2+142),485],[w,h],[0,h]]                     # Trying a smaller window
+    viewport = [[540,465],[740,465],[1280,720],[0,720]]                                     # Final viewport corrects distortion at top of transform
+    #viewport = [[540,468],[740,468],[1280,720],[0,720]]                                    # New Viewport (vanishing point intersection)
     warped = perspective_transform(image, viewport, offset=offset)
 
     img_thresholded = sobel_LR_threshold(warped, sobel_kernel=sobel_kernel, sobel_thresh=sobel_thresh) #Back to LR filtering because Saturation is too noisy
