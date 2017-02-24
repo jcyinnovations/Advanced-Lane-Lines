@@ -1,0 +1,33 @@
+TODO
+____
+
+Only cache the previous frame if it contains a valid roadway (average width close to 12ft with small variance)
+If the detected start points give a too narrow roadway, use the previous (cached) start points if available.
+
+1120 - 320 = 800        12ft
+1080 - 320 = 760
+1120 - 320 = 800
+1000 - 240 = 760
+1080 - 280 = 800
+1160 - 400 = 760
+1120 - 280 = 840
+1080 - 240 = 840
+1120 - 320 = 800
+________________
+             795
+
+             
+Y direction
+132
+132
+160
+132
+160
+132
+120
+___
+138
+
+#Load a pickle file
+with open("camera_parameters.p", mode='rb') as f:
+    test = pickle.load(f)

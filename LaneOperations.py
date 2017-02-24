@@ -7,15 +7,19 @@ import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
 
 # Conversions from pixel space to real space in meters
-ym_per_pix = 3/150    # meters per pixel in y dimension
-xm_per_pix = 3.7/883  # meters per pixel in x dimension
-shift_tolerance = 0.15 # Tolerance in shift of lane lines between sections of an image
+ym_per_pix = 3/138    # meters per pixel in y dimension
+xm_per_pix = 3.7/795  # meters per pixel in x dimension
+shift_tolerance = 0.05# Tolerance in lane shift
+lane_tolerance = 0.25 #Tolerance in lane width
 threshold = 0.0       # minimum weight of found centroid. Any centroids at or under are rejected.
 
 ##############################################################################################################
 # Find the peak location of a signal
 ##############################################################################################################
 def signal_peak(signal):
+    if signal is None or len(signal) < 2:
+        return 0
+        
     idx_start = np.argmax(signal)
     idx_end = len(signal)-np.argmax(signal[::-1])-1
     #print(idx_start, idx_end, signal[idx_start], signal[idx_end])
@@ -30,10 +34,14 @@ def signal_peak(signal):
 # Locate the center of each lane lines across multiple slices from bottom to top of image
 ##############################################################################################################
 def find_window_centroids(image, window_width, window_height, margin, cache=None,DEBUG=False, DEBUG_ID=""):
-    w = image.shape[1]
-    h = image.shape[0]   
     global shift_tolerance
     global threshold
+    global ym_per_pix
+    global xm_per_pix
+    
+    w = image.shape[1]
+    h = image.shape[0]   
+
     # Use window_width/2 as offset because convolution signal reference is at right side of window, not center of window
     offset = window_width/2
     
@@ -44,12 +52,26 @@ def find_window_centroids(image, window_width, window_height, margin, cache=None
     # Sum quarter bottom of image to get slice, could use a different ratio
     l_sum = np.sum(image[int(3*h/4):,:int(w/2)], axis=0)
     l_conv_signal = np.convolve(window, l_sum)
-    l_center = signal_peak(l_conv_signal) - offset    
+    l_idx = signal_peak(l_conv_signal)
+    l_center = l_idx - offset    
     
     r_sum = np.sum(image[int(3*h/4):,int(w/2):], axis=0)
     r_conv_signal = np.convolve(window, r_sum)
-    r_center = int(w/2) + signal_peak(r_conv_signal) - offset 
+    r_idx = signal_peak(r_conv_signal)
+    r_center = int(w/2) + r_idx - offset 
 
+    #Detected lane width
+    lane_width = (r_center - l_center) * xm_per_pix
+    #print("Lane_width", lane_width)
+    if lane_width < 3.7 and lane_width/3.7 < (1-lane_tolerance):
+        # which lane line to adjust by checking the space on either side of the lanes
+        if l_center > w - r_center:
+            #Adjust left lane line relative to right
+            l_center = r_center - 795
+        else:
+            #Adjust right lane line relative to left
+            r_center = l_center + 795
+    
     # Used the cached values (from previous frame) if the detected value differs too much 
     if cache is not None and cache['centers'] is not None:
         #Use the cached values from the previous frame
@@ -58,7 +80,7 @@ def find_window_centroids(image, window_width, window_height, margin, cache=None
            
     # Add what we found for the first layer
     #window_centroids.append((l_center,r_center))
-    #f = plt.imshow(image)
+    f = plt.imshow(image)
     
     # Go through each layer looking for max pixel locations
     for level in range(1,(int)(1+h/window_height)):
@@ -78,12 +100,9 @@ def find_window_centroids(image, window_width, window_height, margin, cache=None
         # Reject invalid centroids (noise or empty space) and keep the previous value
         if l_conv_signal[l_idx] > threshold:
             l_center = l_idx + l_min_index - offset
-        
-        y_pos = int( (h-(level*window_height) + h-(level-1)*window_height)/2)
-        #plt.plot(l_center, y_pos, "o", color="green")
-        #plt.plot(l_min_index, y_pos, "*", color="yellow")
-        #plt.plot(l_max_index, y_pos, "*", color="yellow")
-        
+        else:
+            l_center = l_center_old
+            
         ############## RIGHT LINES
         r_min_index = int(max(r_center+offset-margin, 0))
         r_max_index = int(min(r_center+offset+margin, w))
@@ -93,7 +112,13 @@ def find_window_centroids(image, window_width, window_height, margin, cache=None
         # Reject invalid centroids (noise or empty space) and keep the previous value
         if r_conv_signal[r_idx] > threshold:
             r_center = r_min_index + r_idx - offset
+        else:
+            r_center = r_center_old
         
+        #y_pos = int( (h-(level*window_height) + h-(level-1)*window_height)/2)
+        #plt.plot(l_center, y_pos, "o", color="green")
+        #plt.plot(l_min_index, y_pos, "*", color="yellow")
+        #plt.plot(l_max_index, y_pos, "*", color="yellow")       
         #plt.plot(r_center, y_pos, "o", color="green")
         #plt.plot(r_min_index, y_pos, "*", color="yellow")
         #plt.plot(r_max_index, y_pos, "*", color="yellow")
