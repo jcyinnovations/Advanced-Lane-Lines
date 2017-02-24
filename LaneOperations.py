@@ -7,9 +7,24 @@ import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
 
 # Conversions from pixel space to real space in meters
-ym_per_pix = 3/150   # meters per pixel in y dimension
-xm_per_pix = 3.7/883 # meters per pixel in x dimension
-shift_tolerance = 0.05 # Tolerance in shift of lane lines between sections of an image
+ym_per_pix = 3/150    # meters per pixel in y dimension
+xm_per_pix = 3.7/883  # meters per pixel in x dimension
+shift_tolerance = 0.15 # Tolerance in shift of lane lines between sections of an image
+threshold = 0.0       # minimum weight of found centroid. Any centroids at or under are rejected.
+
+##############################################################################################################
+# Find the peak location of a signal
+##############################################################################################################
+def signal_peak(signal):
+    idx_start = np.argmax(signal)
+    idx_end = len(signal)-np.argmax(signal[::-1])-1
+    #print(idx_start, idx_end, signal[idx_start], signal[idx_end])
+    if idx_end > idx_start: # Sanity check
+        idx = int((idx_start + idx_end)/2)
+    else:
+        idx = idx_start
+    return idx
+
 
 ##############################################################################################################
 # Locate the center of each lane lines across multiple slices from bottom to top of image
@@ -18,77 +33,70 @@ def find_window_centroids(image, window_width, window_height, margin, cache=None
     w = image.shape[1]
     h = image.shape[0]   
     global shift_tolerance
+    global threshold
+    # Use window_width/2 as offset because convolution signal reference is at right side of window, not center of window
+    offset = window_width/2
     
     window_centroids = [] # Store the (left,right) window centroid positions per level
     window = np.ones(window_width) # Create our window template that we will use for convolutions
     # First find the two starting positions for the left and right lane by using np.sum to get the vertical image slice
     # and then np.convolve the vertical image slice with the window template 
     # Sum quarter bottom of image to get slice, could use a different ratio
-    l_sum = np.sum(image[int(3*image.shape[0]/4):,:int(image.shape[1]/2)], axis=0)
-    l_center = np.argmax(np.convolve(window,l_sum))-window_width/2
-    r_sum = np.sum(image[int(3*image.shape[0]/4):,int(image.shape[1]/2):], axis=0)
-    r_center = np.argmax(np.convolve(window,r_sum))+int(image.shape[1]/2) -window_width/2
+    l_sum = np.sum(image[int(3*h/4):,:int(w/2)], axis=0)
+    l_conv_signal = np.convolve(window, l_sum)
+    l_center = signal_peak(l_conv_signal) - offset    
+    
+    r_sum = np.sum(image[int(3*h/4):,int(w/2):], axis=0)
+    r_conv_signal = np.convolve(window, r_sum)
+    r_center = int(w/2) + signal_peak(r_conv_signal) - offset 
 
     # Used the cached values (from previous frame) if the detected value differs too much 
     if cache is not None and cache['centers'] is not None:
         #Use the cached values from the previous frame
         l_center_cached = cache['centers'][0]
         r_center_cached = cache['centers'][1]
-        cutoff = w*shift_tolerance
-        if math.fabs(l_center-l_center_cached) > cutoff:
-            l_center = l_center_cached
-        if math.fabs(r_center-r_center_cached) > cutoff:
-            r_center = r_center_cached
-            
+           
     # Add what we found for the first layer
     #window_centroids.append((l_center,r_center))
+    #f = plt.imshow(image)
     
     # Go through each layer looking for max pixel locations
-    for level in range(1,(int)(1+image.shape[0]/window_height)):
+    for level in range(1,(int)(1+h/window_height)):
+        ############## INIT
         l_center_old = l_center
         r_center_old = r_center
-        # convolve the window into the vertical slice of the image
-        image_layer = np.sum(image[int(image.shape[0]-(level)*window_height):int(image.shape[0]-(level-1)*window_height),:], axis=0)
+        image_layer = np.sum(image[int(h-(level)*window_height):int(h-(level-1)*window_height),:], axis=0)
         conv_signal = np.convolve(window, image_layer)
         # Find the best left centroid by using past left center as a reference
-        # Use window_width/2 as offset because convolution signal reference is at right side of window, not center of window
-        offset = window_width/2
         
-        # LEFT LINES
-        l_min_index = int(max(l_center-offset-margin, 0))
-        l_max_index = int(min(l_center+offset+margin, image.shape[1]/2))
-        l_conv_signal = conv_signal[:int(w/2)]
-        #l_conv_signal = conv_signal[l_min_index:l_max_index]
-        # Check this is a real lane line and not noise. If not, use the last value
-        l_idx_start = np.argmax(l_conv_signal)
-        l_idx_end = len(l_conv_signal)-np.argmax(l_conv_signal[::-1])-1
-        if l_idx_end > l_idx_start: # Sanity check
-            l_idx = int((l_idx_start + l_idx_end)/2)
-        else:
-            l_idx = l_idx_start
-        l_center = l_idx-offset #+l_min_index
-        l_max = l_conv_signal[l_idx]
-        l_cutoff = w*shift_tolerance #np.mean(l_conv_signal) #+ np.std(l_conv_signal)
-        if math.fabs(l_center-l_center_old) > l_cutoff:
-            l_center = l_center_old
+        ############## LEFT LINES
+        l_min_index = int(max(l_center+offset-margin, 0))
+        l_max_index = int(min(l_center+offset+margin, w))
+        #l_conv_signal = conv_signal[:int(w/2)]
+        l_conv_signal = conv_signal[l_min_index:l_max_index]
+        l_idx = signal_peak(l_conv_signal)
+        # Reject invalid centroids (noise or empty space) and keep the previous value
+        if l_conv_signal[l_idx] > threshold:
+            l_center = l_idx + l_min_index - offset
         
-        # RIGHT LINES
-        r_min_index = int(max(r_center-offset-margin, image.shape[1]/2))
-        r_max_index = int(min(r_center+offset+margin, image.shape[1]))
-        r_conv_signal = conv_signal[int(w/2):]
-        #r_conv_signal = conv_signal[r_min_index:r_max_index]
-        # Check this is a real lane line and not noise. If not, use the last value
-        r_idx_start = np.argmax(r_conv_signal)
-        r_idx_end = len(r_conv_signal)-np.argmax(r_conv_signal[::-1])-1
-        if r_idx_end > r_idx_start: # Sanity check
-            r_idx = int((r_idx_start+r_idx_end)/2)
-        else:
-            r_idx = r_idx_start
-        r_center = w/2 + r_idx-offset #r_min_index
-        r_max = r_conv_signal[r_idx]
-        r_cutoff = w*shift_tolerance #allowable pixel shift in lane line center between layers
-        if math.fabs(r_center-r_center_old) > r_cutoff:
-            r_center = r_center_old
+        y_pos = int( (h-(level*window_height) + h-(level-1)*window_height)/2)
+        #plt.plot(l_center, y_pos, "o", color="green")
+        #plt.plot(l_min_index, y_pos, "*", color="yellow")
+        #plt.plot(l_max_index, y_pos, "*", color="yellow")
+        
+        ############## RIGHT LINES
+        r_min_index = int(max(r_center+offset-margin, 0))
+        r_max_index = int(min(r_center+offset+margin, w))
+        #r_conv_signal = conv_signal[int(w/2):]
+        r_conv_signal = conv_signal[r_min_index:r_max_index]
+        r_idx = signal_peak(r_conv_signal)
+        # Reject invalid centroids (noise or empty space) and keep the previous value
+        if r_conv_signal[r_idx] > threshold:
+            r_center = r_min_index + r_idx - offset
+        
+        #plt.plot(r_center, y_pos, "o", color="green")
+        #plt.plot(r_min_index, y_pos, "*", color="yellow")
+        #plt.plot(r_max_index, y_pos, "*", color="yellow")
             
         # Update the list of centroids
         window_centroids.append((l_center,r_center))
@@ -96,13 +104,11 @@ def find_window_centroids(image, window_width, window_height, margin, cache=None
         if DEBUG:
             f = plt.figure(figsize=(4,4))
             g = plt.plot(conv_signal)
-            plt.plot(l_center, l_cutoff, "*", color="red")
-            plt.plot(l_center, l_max, "*", color="red")
+            plt.plot(l_center, l_conv_signal[l_idx], "*", color="red")
             plt.plot(l_center_old, 100, "o", color="green")
             plt.plot(l_center, 200, "o", color="red")
 
-            plt.plot(r_center, r_cutoff, "*", color="red")
-            plt.plot(r_center, r_max, "*", color="red")
+            plt.plot(r_center, r_conv_signal[r_idx], "*", color="red")
             plt.plot(r_center_old, 100, "o", color="green")
             plt.plot(r_center, 200, "o", color="red")
             plt.title("Slice Convolution {0}".format(level))
@@ -177,7 +183,7 @@ def map_lane_lines(image, window_width=50, window_height=80, margin=100, cache=N
         cv2.polylines(found_lines,[r_pts], 0, (255,0,0),thickness=4)
         
         original = cv2.cvtColor(img_thresholded, cv2.COLOR_GRAY2RGB)
-        mapped_lanes = cv2.addWeighted(original, 25, found_lines, 0.3, 0)
+        mapped_lanes = cv2.addWeighted(original, 50, found_lines, 0.3, 0)
         
         r_centroid = np.column_stack((r, y_fit)).astype("int32")
         l_centroid = np.column_stack((l, y_fit)).astype("int32")
