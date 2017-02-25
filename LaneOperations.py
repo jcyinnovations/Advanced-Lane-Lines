@@ -7,11 +7,11 @@ import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
 
 # Conversions from pixel space to real space in meters
-ym_per_pix = 3/138    # meters per pixel in y dimension
-xm_per_pix = 3.7/795  # meters per pixel in x dimension
-shift_tolerance = 0.05# Tolerance in lane shift
-lane_tolerance = 0.25 #Tolerance in lane width
-threshold = 0.0       # minimum weight of found centroid. Any centroids at or under are rejected.
+ym_per_pix = 3/138                 # meters per pixel in y dimension
+xm_per_pix = 3.7/795               # meters per pixel in x dimension
+shift_tolerance = 0.05             # Tolerance in lane shift
+lane_tolerance = 0.10              #Tolerance in lane width
+threshold = 0.0                    # minimum weight of found centroid. Any centroids at or under are rejected.
 
 ##############################################################################################################
 # Find the peak location of a signal
@@ -59,28 +59,44 @@ def find_window_centroids(image, window_width, window_height, margin, cache=None
     r_conv_signal = np.convolve(window, r_sum)
     r_idx = signal_peak(r_conv_signal)
     r_center = int(w/2) + r_idx - offset 
-
+    
     #Detected lane width
     lane_width = (r_center - l_center) * xm_per_pix
-    #print("Lane_width", lane_width)
-    if lane_width < 3.7 and lane_width/3.7 < (1-lane_tolerance):
-        # which lane line to adjust by checking the space on either side of the lanes
-        if l_center > w - r_center:
-            #Adjust left lane line relative to right
-            l_center = r_center - 795
-        else:
-            #Adjust right lane line relative to left
-            r_center = l_center + 795
-    
+    delta = math.fabs(lane_width-3.7)/3.7
+    #print("Lane_width", lane_width, delta)
+        
     # Used the cached values (from previous frame) if the detected value differs too much 
     if cache is not None and cache['centers'] is not None:
+        #print("Using cache...")
         #Use the cached values from the previous frame
         l_center_cached = cache['centers'][0]
         r_center_cached = cache['centers'][1]
-           
+        lane_width_cached = cache['width']
+        delta_cached = math.fabs(lane_width_cached-3.7)/3.7
+        # Use cached starting point or detected starting point
+        # Use whichever is closest to the expected lane width
+        if delta > delta_cached:
+            l_center = l_center_cached
+            r_center = r_center_cached   
+    else:
+        # No caching so try compensating with expected width
+        if delta > lane_tolerance:
+            #Fix the starting points
+            lgap, rgap = l_center, w-r_center
+            if lane_width < 795:
+                if lgap > rgap:
+                    l_center = r_center - 795
+                else:
+                    r_center = l_center + 795
+            else:
+                if lgap > rgap:
+                    r_center = l_center + 795
+                else:
+                    l_center = r_center - 795
+            
     # Add what we found for the first layer
     #window_centroids.append((l_center,r_center))
-    f = plt.imshow(image)
+    #f = plt.imshow(image)
     
     # Go through each layer looking for max pixel locations
     for level in range(1,(int)(1+h/window_height)):
@@ -165,8 +181,8 @@ def map_lane_lines(image, window_width=50, window_height=80, margin=100, cache=N
     w, h = image.shape[1], image.shape[0]
     offset = 80
     
-    viewport = [[540,465],[740,465],[1280,720],[0,720]]                                     # Final viewport corrects distortion at top of transform
-    #viewport = [[540,468],[740,468],[1280,720],[0,720]]                                    # New Viewport (vanishing point intersection)
+    viewport = [[540,465],[740,465],[1280,720],[0,720]]             # Final viewport corrects distortion at top of transform
+    #viewport = [[540,468],[740,468],[1280,720],[0,720]]            # New Viewport (vanishing point intersection)
     warped = perspective_transform(image, viewport, offset=offset)
 
     img_thresholded = sobel_LR_threshold(warped, sobel_kernel=sobel_kernel, sobel_thresh=sobel_thresh) #Back to LR filtering because Saturation is too noisy
@@ -219,11 +235,15 @@ def map_lane_lines(image, window_width=50, window_height=80, margin=100, cache=N
         lane_markings = cv2.addWeighted(image, 1, overlay, 0.75, 0)
             
         #Update the cache with current parameters
+        l_centroid_fit = L_coeff[0]*h**2 + L_coeff[1]*h + L_coeff[2]
+        r_centroid_fit = R_coeff[0]*h**2 + R_coeff[1]*h + R_coeff[2]
+        lane_width = (r_centroid_fit - l_centroid_fit) * xm_per_pix
         cache = {}
-        cache['centers'] = window_centroids[0]
+        cache['centers'] = [l_centroid_fit, r_centroid_fit]
         cache['radii'] = (radius_L, radius_R)
         cache['coeffs']= (L_coeff, R_coeff)
         cache['centroids'] = window_centroids
+        cache['width'] = lane_width
         
         # Overlay the viewport on the image
         if DEBUG:
