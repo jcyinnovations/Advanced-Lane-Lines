@@ -1,4 +1,4 @@
-from CameraOperations import perspective_transform, sobel_LSR_threshold, sobel_LR_threshold
+from CameraOperations import perspective_transform, sobel_LS_threshold
 from ImageProcessing import gaussian_blur
 import numpy as np
 import cv2
@@ -175,24 +175,21 @@ def map_lane_lines(image, window_width=50, window_height=80, margin=100, cache=N
     global ym_per_pix
     global xm_per_pix
     sobel_thresh=(30, 150)
-    gradient_thresh=(0.7, 1.2)
-    sobel_kernel=15
+    gradient_thresh=(0.7, 1.3)
+    sobel_kernel=9
     s_thresh=(170,240)
     w, h = image.shape[1], image.shape[0]
     offset = 80
     
+    img_thresholded = sobel_LS_threshold(image, sobel_kernel=sobel_kernel, sobel_thresh=sobel_thresh, gradient_thresh=gradient_thresh)
+
     viewport = [[540,465],[740,465],[1280,720],[0,720]]             # Final viewport corrects distortion at top of transform
     #viewport = [[540,468],[740,468],[1280,720],[0,720]]            # New Viewport (vanishing point intersection)
-    warped = perspective_transform(image, viewport, offset=offset)
+    warped = perspective_transform(img_thresholded, viewport, offset=offset)
 
-    img_thresholded = sobel_LR_threshold(warped, sobel_kernel=sobel_kernel, sobel_thresh=sobel_thresh) #Back to LR filtering because Saturation is too noisy
-    #img_thresholded = sobel_LSR_threshold(warped, sobel_kernel=sobel_kernel, sobel_thresh=sobel_thresh)
-    #Smooth the thresholds to make line detection easier
-    img_thresholded = gaussian_blur(img_thresholded, kernel_size=9)
-    
     mapped_lanes = None
     lane_markings = None
-    window_centroids = find_window_centroids(img_thresholded, window_width, window_height, margin, cache, DEBUG, DEBUG_ID)
+    window_centroids = find_window_centroids(warped, window_width, window_height, margin, cache, DEBUG, DEBUG_ID)
     # Centroids found, fit to a polygon and display
     if len(window_centroids) > 0:
         centroids = np.array(window_centroids)
@@ -213,14 +210,14 @@ def map_lane_lines(image, window_width=50, window_height=80, margin=100, cache=N
         r_pts = np.column_stack((r_x, y)).astype("int32")
         
         # Paint the polynomial onto a canvas and overlay on image
-        found_lines = 255*np.zeros((h,w,3), np.uint8)
+        found_lines = np.zeros((h,w,3), np.uint8)
         
         lr_pts = np.append(l_pts,r_pts, axis=0)
         cv2.fillPoly(found_lines, [lr_pts], (0,255,0))
         cv2.polylines(found_lines,[l_pts], 0, (255,0,0),thickness=4)
         cv2.polylines(found_lines,[r_pts], 0, (255,0,0),thickness=4)
         
-        original = cv2.cvtColor(img_thresholded, cv2.COLOR_GRAY2RGB)
+        original = cv2.cvtColor(255*warped, cv2.COLOR_GRAY2RGB)
         mapped_lanes = cv2.addWeighted(original, 50, found_lines, 0.3, 0)
         
         r_centroid = np.column_stack((r, y_fit)).astype("int32")

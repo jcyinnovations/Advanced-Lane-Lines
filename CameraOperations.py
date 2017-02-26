@@ -153,7 +153,7 @@ def gradient_threshold(img, sobel_kernel=3, thresh=(0, np.pi/2)):
     sobelx = np.absolute(cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=sobel_kernel))
     sobely = np.absolute(cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=sobel_kernel))
     gradient = np.arctan2(sobely, sobelx)
-    sxbinary = np.zeros_like(gradient)
+    sxbinary = np.zeros_like(gradient).astype("uint8")
     sxbinary[(gradient >= thresh[0]) & (gradient <= thresh[1])] = 1
     return sxbinary
 
@@ -165,7 +165,7 @@ def sobel_and_gradient(img, sobel_kernel=3, sobel_thresh=(80, 160), gradient_thr
     grady = sobel_threshold(img, orient='y', sobel_kernel=sobel_kernel, thresh=sobel_thresh)
     mag_binary = sobel_threshold(img, orient='both', sobel_kernel=sobel_kernel, thresh=sobel_thresh)
     dir_binary = gradient_threshold(img, sobel_kernel=sobel_kernel, thresh=gradient_thresh)
-    combined = np.zeros_like(dir_binary)
+    combined = np.zeros_like(dir_binary).astype("uint8")
     combined[((gradx == 1) & (grady == 1)) | ((mag_binary == 1) & (dir_binary == 1))] = 1
     return combined
 
@@ -234,3 +234,19 @@ def sobel_LSR_threshold(image, sobel_kernel=15, sobel_thresh=(30, 150)):
     combined_slr = np.zeros_like(sobel_r)
     combined_slr[((sobel_r == 1) | (sobel_l == 1) | (sobel_s == 1))] = 1 # | (t_r == 1)
     return combined_slr
+
+##############################################################################
+# Gradient & Threshold on Luminosity and Saturation (HLS) channels
+# Luminosity performs better in shadow whereas Saturation performs better
+# generally. 
+##############################################################################
+def sobel_LS_threshold(image, sobel_kernel=15, sobel_thresh=(30, 150), gradient_thresh=(0, np.pi/2)):
+    hls = cv2.cvtColor(image, cv2.COLOR_RGB2HLS)
+    l = hls[:,:,1]
+    s = hls[:,:,2]
+    s = sobel_and_gradient(s, sobel_kernel=sobel_kernel, sobel_thresh=sobel_thresh, gradient_thresh=gradient_thresh)
+    l = sobel_and_gradient(l, sobel_kernel=sobel_kernel, sobel_thresh=sobel_thresh, gradient_thresh=gradient_thresh)
+    
+    combined = np.zeros_like(s).astype("uint8")
+    combined[((s == 1) | (l == 1))] = 1
+    return combined
