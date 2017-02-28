@@ -18,8 +18,8 @@ import matplotlib.pyplot as plt
 ##############################################################################################################
 class Line():
     N = 5                   # Retain the last N measurements
-    road_width_pixels = 760
-    lane_length_pixels = 140
+    road_width_pixels = 795
+    lane_length_pixels = 115
     ym_per_pix = 3/lane_length_pixels      # Conversion from pixels to meters in y
     xm_per_pix = 3.7/road_width_pixels    # Conversion from pixels to meters in x
 
@@ -77,7 +77,10 @@ class Line():
             
     # Generate line coordinates for plotting lane
     def fit_line(self):
-        coeff = self.best_fit
+        if self.best_fit is None:
+            coeff = self.current_fit
+        else:
+            coeff = self.best_fit
         #y = np.array([p for p in range(0,h+1,10)])
         x = coeff[0]*self.y**2 + coeff[1]*self.y + coeff[2]
         pts = np.column_stack((x, self.y)).astype("int32") 
@@ -85,7 +88,11 @@ class Line():
     
     # Calculate the starting point for the next detection
     def get_starting_point(self, start_y):
-        start_x = self.best_fit[0]*start_y**2 + self.best_fit[1]*start_y + self.best_fit[2]
+        if self.best_fit is None:
+            coeff = self.current_fit
+        else:
+            coeff = self.best_fit
+        start_x = coeff[0]*start_y**2 + coeff[1]*start_y + coeff[2]
         return start_x
     
     
@@ -100,12 +107,12 @@ class Line():
 # Tracking the road definition as per the line detection algorithms
 ##############################################################################################################
 class Road(object):
-    viewport = [[540,465],[740,465],[1280,720],[0,720]]    #Original
+    viewport = [[540,465],[740,465],[1280,720],[0,720]]     #Original
     #viewport = [[488,490],[792,490],[1280,720],[0,720]] 
-    #viewport = [[570,450],[710,450],[1280,720],[0,720]]   # New 2
+    #viewport = [[570,450],[710,450],[1280,720],[0,720]]    # New 2
     #viewport = [[574,450],[706,450],[1280,720],[0,720]]
     #viewport = [[593,449],[691,449],[1080,720],[204,720]]  # New
-
+    
 
     def __init__(self, window_height=48, window_width=40, margin=40, w=1280, h=720):
         self.left_lane = Line(w, h)
@@ -117,13 +124,15 @@ class Road(object):
         self.window_width = window_width
         self.window_height = window_height
         self.margin = margin
-        self.offset = 80
+        self.offset = 320
         self.shift_tolerance = 0.05             # Tolerance in lane shift
         self.lane_tolerance = 0.10              # Tolerance in lane width
         self.threshold = 0.0                    # minimum weight of found centroid. Any centroids at or under are rejected.
         # Optimzation: Create the yfit once to avoid the overhead of recreating each image parse
         self.y_fit = np.array([s for s in range(int(h-self.window_height/2), 0, -self.window_height)])
         self.y_fit = np.insert(self.y_fit, 0,720) # y positions of detected centroids
+        self.w = w
+        self.h = h
 
         
     #Check that the most recent lines are valid
@@ -232,6 +241,7 @@ class Road(object):
         w, h = image.shape[1], image.shape[0]
         src = np.float32(Road.viewport)
         dst = np.float32([[self.offset,0],[w-self.offset,0],[w-self.offset,h],[self.offset,h]])
+
         M = cv2.getPerspectiveTransform(src, dst)
         if reverse:
             M = cv2.getPerspectiveTransform(dst, src)
@@ -311,14 +321,19 @@ class Road(object):
         if len(window_centroids) > 0:
             centroids = np.array(window_centroids)
             l, r = centroids[:,0], centroids[:,1]
+            # Update the lane lines fully if sanity checks pass
             if self.sanity_checked(l, r):
                 self.left_lane.update(l, self.y_fit)
                 self.right_lane.update(r, self.y_fit)
             else:
+                #update current fit only
                 self.left_lane.detected_x = l
                 self.left_lane.detected = False
+                self.left_lane.current_fit = np.polyfit(self.y_fit, l, 2)
+                
                 self.right_lane.detected_x = r
                 self.right_lane.detected = False
+                self.right_lane.current_fit = np.polyfit(self.y_fit, r, 2)
                 
         return warped
          
@@ -359,13 +374,18 @@ class Road(object):
         else:
             right = self.right_lane.radius_of_curvature
         radius = (self.left_lane.radius_of_curvature + self.right_lane.radius_of_curvature)/2
-        label = "Radius of Curvature = {0:.0f}, {1:.0f}".format(left, right)
+        #label = "Radius of Curvature = {0:.0f}, {1:.0f}".format(left, right)
+        label = "Radius of Curvature = {0:.0f}".format(radius)
         return label
     
     
     # Vehicle Position Annotation
     def position_label(self):
-        distance = self.right_lane.line_base_pos - self.left_lane.line_base_pos
+        l_pos = self.left_lane.get_starting_point(self.h)
+        r_pos = self.right_lane.get_starting_point(self.h)
+        midpoint = (r_pos + l_pos)/2
+        distance = (midpoint -  self.w/2) * Line.xm_per_pix
+        #print(l_pos, r_pos, midpoint, distance)
         if distance > 0:
             direction = "right"
         else:
