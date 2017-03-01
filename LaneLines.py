@@ -124,7 +124,7 @@ class Road(object):
         self.window_width = window_width
         self.window_height = window_height
         self.margin = margin
-        self.offset = 320
+        self.offset = 80
         self.shift_tolerance = 0.05             # Tolerance in lane shift
         self.lane_tolerance = 0.10              # Tolerance in lane width
         self.threshold = 0.0                    # minimum weight of found centroid. Any centroids at or under are rejected.

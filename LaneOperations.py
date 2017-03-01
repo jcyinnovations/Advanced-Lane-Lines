@@ -13,6 +13,7 @@ shift_tolerance = 0.05             # Tolerance in lane shift
 lane_tolerance = 0.10              #Tolerance in lane width
 threshold = 0.0                    # minimum weight of found centroid. Any centroids at or under are rejected.
 
+
 ##############################################################################################################
 # Find the peak location of a signal
 ##############################################################################################################
@@ -78,21 +79,6 @@ def find_window_centroids(image, window_width, window_height, margin, cache=None
         if delta > delta_cached:
             l_center = l_center_cached
             r_center = r_center_cached   
-    else:
-        # No caching so try compensating with expected width
-        if delta > lane_tolerance:
-            #Fix the starting points
-            lgap, rgap = l_center, w-r_center
-            if lane_width < 795:
-                if lgap > rgap:
-                    l_center = r_center - 795
-                else:
-                    r_center = l_center + 795
-            else:
-                if lgap > rgap:
-                    r_center = l_center + 795
-                else:
-                    l_center = r_center - 795
             
     # Add what we found for the first layer
     #window_centroids.append((l_center,r_center))
@@ -171,18 +157,18 @@ def find_window_centroids(image, window_width, window_height, margin, cache=None
 # 7. Use the functions to highlight the lane on the road.
 # 8. Calculate the degree of offset to the center of the lane
 ##############################################################################################################
-def map_lane_lines(image, window_width=50, window_height=80, margin=100, cache=None, DEBUG=False, DEBUG_ID=""):
+def map_lane_lines(image, window_width=50, window_height=80, margin=100, cache=None, DEBUG=False, DEBUG_ID="", offset=80):
     global ym_per_pix
     global xm_per_pix
     sobel_thresh=(30, 150)
     gradient_thresh=(0.7, 1.3)
-    sobel_kernel=9
+    sobel_kernel=3
     s_thresh=(170,240)
     w, h = image.shape[1], image.shape[0]
-    offset = 80
+    offset = offset
     
-    img_thresholded = sobel_LS_threshold(image, sobel_kernel=sobel_kernel, sobel_thresh=sobel_thresh, gradient_thresh=gradient_thresh)
-
+    img_thresholded = 255*sobel_LS_threshold(image, sobel_kernel=sobel_kernel, sobel_thresh=sobel_thresh, gradient_thresh=gradient_thresh)
+    #print( np.max(img_thresholded))
     viewport = [[540,465],[740,465],[1280,720],[0,720]]             # Final viewport corrects distortion at top of transform
     #viewport = [[540,468],[740,468],[1280,720],[0,720]]            # New Viewport (vanishing point intersection)
     warped = perspective_transform(img_thresholded, viewport, offset=offset)
@@ -217,8 +203,9 @@ def map_lane_lines(image, window_width=50, window_height=80, margin=100, cache=N
         cv2.polylines(found_lines,[l_pts], 0, (255,0,0),thickness=4)
         cv2.polylines(found_lines,[r_pts], 0, (255,0,0),thickness=4)
         
-        original = cv2.cvtColor(255*warped, cv2.COLOR_GRAY2RGB)
-        mapped_lanes = cv2.addWeighted(original, 50, found_lines, 0.3, 0)
+        original = cv2.cvtColor(1*warped, cv2.COLOR_GRAY2RGB)
+        mapped_lanes = cv2.addWeighted(original, 0.5, found_lines, 0.5, 0)
+        #mapped_lanes = found_lines
         
         r_centroid = np.column_stack((r, y_fit)).astype("int32")
         l_centroid = np.column_stack((l, y_fit)).astype("int32")

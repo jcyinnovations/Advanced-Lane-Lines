@@ -51,7 +51,7 @@ def load_images_from_folder(folder, images=None, name_pattern=None):
 #################################################################
 # Calibrate camera with chessboard images
 #################################################################
-def calibrate_camera(images, counts=(8,6)):
+def calibrate_camera(images, counts=(9,6)):
     objpoints = [] # 3D points in real space
     imgpoints = [] # 2D points in image space
 
@@ -72,26 +72,41 @@ def calibrate_camera(images, counts=(8,6)):
 #################################################################
 # Calibrate camera with chessboard images
 #################################################################
-def calibrate_camera_from_folder(folder, images=None, name_pattern=None, counts=(8,6)):
+def calibrate_camera_from_folder(folder, images=None, name_pattern=None, counts=(9,6)):
     if images is None and name_pattern is not None:
         images = glob.glob("{0}/{1}".format(folder,name_pattern))
     else:
         return None
 
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
     objpoints = [] # 3D points in real space
     imgpoints = [] # 2D points in image space
     objp = np.zeros( (counts[0]*counts[1], 3), np.float32 )
     objp[:,:2] = np.mgrid[0:counts[0], 0:counts[1]].T.reshape(-1, 2) #Generate x,y coordinates
 
     for fname in images:
-        img = mpimg.imread(fname)
+        #img = mpimg.imread(fname)
+        img = cv2.imread(fname)
         gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
         ret, corners = cv2.findChessboardCorners(gray, counts, None)
         if ret==True:
-            imgpoints.append(corners)
             objpoints.append(objp)
-            #img_corners = cv2.drawChessboardCorners(img, counts, corners, ret)
+            corners2 = cv2.cornerSubPix(gray,corners,(11,11),(-1,-1),criteria)
+            imgpoints.append(corners2)
+            #img_corners = cv2.drawChessboardCorners(img, counts, corners2, ret)
+            #plt.figure()
+            #plt.imshow(img_corners)
     ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1],None,None)
+    # Calculate reprojection error
+    mean_error = 0
+    for i in range(len(objpoints)):
+        imgpoints2, _ = cv2.projectPoints(objpoints[i], rvecs[i], tvecs[i], mtx, dist)
+        error = cv2.norm(imgpoints[i],imgpoints2, cv2.NORM_L2)/len(imgpoints2)
+        print("Image", images[i], "Error",error)
+        mean_error += error
+
+    print("Total error: ", mean_error/len(objpoints))
+    
     return mtx, dist
 
     
@@ -111,11 +126,11 @@ def perspective_transform(image, viewport=[[0,0],[0,0],[0,0],[0,0]], offset=80, 
     src = np.float32(viewport)
     #dst = np.float32([[offset, offset], [w-offset, offset], [w-offset, h-offset], [offset, h-offset]])
     #dst = np.float32([[offset,0],[w-offset,0],[w-offset,h+offset],[offset,h+offset]])
-    dst = np.float32([[offset,0],[w-offset,0],[w-offset,h],[offset,h]])
+    dst = np.float32([[0,0],[w-offset,0],[w-offset,h],[0,h]])
     M = cv2.getPerspectiveTransform(src, dst)
     if reverse:
         M = cv2.getPerspectiveTransform(dst, src)
-    warped = cv2.warpPerspective(image, M, (w,h), flags=cv2.INTER_LINEAR)
+    warped = cv2.warpPerspective(image, M, (w-offset,h), flags=cv2.INTER_LINEAR)
     return warped
 
 #################################################################
