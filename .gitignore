@@ -50,7 +50,6 @@ Temporary Items
 debug_detailed/
 debug_images*/
 examples/
-output_images/
 __pycache__/
 test_images/
 overlay_images/
@@ -63,3 +62,4 @@ corrected_images/
 *.xcf
 signs_vehicles_xygrad.png
 Project4-Review.pdf
+*.zip
